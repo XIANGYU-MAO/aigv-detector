@@ -3,21 +3,23 @@
  
 
 ## How to use
-0. #### download source
+Please use python3.9
 
-   ckpt link: [google drive](https://drive.google.com/drive/folders/1mJu9XGbgmTM6721xDPBGPQkm8SpHKrYp?usp=sharing)
+0. #### download source
+ckpt link: [google drive](https://drive.google.com/drive/folders/1mJu9XGbgmTM6721xDPBGPQkm8SpHKrYp?usp=sharing), download and put it into `./DeepfakeBench/training/weights`
 
 1. #### install:
+if you use conda
 ```python
 $ conda create -n fit5230-aigi python=3.9
 $ pip install torch torchvision
 ```
 
 2. #### cmake and dlib：
-
-  dlib .whl link: [google drive](https://drive.google.com/drive/folders/1f8cf_EzPzzfSsinUXIpIrRGAF-KJUPd-?usp=sharing) (if python3.9, choose 39)
+please use dlib .whl directly, don't compile. 
+link: [google drive](https://drive.google.com/drive/folders/1f8cf_EzPzzfSsinUXIpIrRGAF-KJUPd-?usp=sharing) (if python3.9, choose 39)
 ```python
-python -m pip install dlib-19.22.99-cp39-cp39-win_amd64.whl`
+$ python -m pip install dlib-19.22.99-cp39-cp39-win_amd64.whl`
 ```
 
 3. #### numpy:
@@ -28,7 +30,7 @@ $ pip install numpy=1.23.5
 
 4. #### modify:
 - models link: [google drive](https://drive.google.com/drive/folders/1vvHhHOWuQV9SwRVTA1aE0J93dBAfMDRB?usp=sharing)
-- open `./DeepfakeBench/training/detectors/effort_detector.py`
+- modify `./DeepfakeBench/training/detectors/effort_detector.py`
 - in 49th line:
 ```python
 # please use absoluted path
@@ -37,7 +39,7 @@ clip_model = CLIPModel.from_pretrained("models--openai--clip-vit-large-patch14")
 
 5. #### run：
 ```shell
-sh install.sh
+$ sh install.sh
 ```
 ```python
 $ cd DeepfakeBench
