@@ -38,7 +38,7 @@ clip_model = CLIPModel.from_pretrained("models--openai--clip-vit-large-patch14")
 ```
 
 5. #### run：
-1. images
+- images
 ```shell
 $ sh install.sh
 ```
@@ -47,8 +47,9 @@ $ cd DeepfakeBench
 $ python training/demo.py --detector_config training/config/detector/effort.yaml --weights ./training/weights/effort_clip_L14_trainOn_chameleon.pth --image {IMAGE_PATH or IMAGE_FOLDER}
 ```
 Note, you are processing a **face image**, please add the ``--landmark_model ./preprocessing/shape_predictor_81_face_landmarks.dat`` to **extract the facial region** for inference, as our model (trained on face deepfakes) used this face extractor for processing faces.
+<img width="951" height="139" alt="image1" src="https://github.com/user-attachments/assets/2f90e2b9-b6e2-4090-a86e-ab48d12dea46" />
 
-2. video
+- video
 ```bash
 python training/video_demo.py \
     --detector_config training/config/detector/effort.yaml \
@@ -57,6 +58,10 @@ python training/video_demo.py \
     --landmark_model ./preprocessing/shape_predictor_81_face_landmarks.dat \
     --num_frames 15
 ```
+<img width="949" height="511" alt="video2" src="https://github.com/user-attachments/assets/5a5bfefa-d957-43f9-abfe-437b30af91b6" />
+<img width="951" height="681" alt="video1" src="https://github.com/user-attachments/assets/3fdbbdd9-b29f-4f3d-a3b2-3b818a5bd545" />
+
+
 
 ##### 参数说明:
 - `--detector_config`: 检测器配置文件路径
