@@ -245,8 +245,7 @@ def main():
         if frame_results:
             print("\n各帧检测结果:")
             for i, result in enumerate(frame_results):
-                print(f"  帧 {i+1}: 假概率={result['fake_probability']:.4f}, "
-                      f"预测={'假' if result['prediction'] == 1 else '真'}")
+                print(f"  帧 {i+1}: 假概率={result['fake_probability']:.4f}, ")
         
         # 如果指定保留帧文件
         if args.keep_frames and args.output_dir:
