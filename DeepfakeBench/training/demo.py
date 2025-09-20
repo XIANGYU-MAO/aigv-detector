@@ -5,7 +5,12 @@ import yaml
 import pickle
 from tqdm import tqdm
 from PIL import Image as pil_image
-import dlib
+try:
+    import dlib
+    DLIB_AVAILABLE = True
+except ImportError:
+    dlib = None
+    DLIB_AVAILABLE = False
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -20,6 +25,7 @@ from imutils import face_utils
 from skimage import transform as trans
 import torchvision.transforms as T
 import os
+import sys
 from os.path import join
 from typing import Tuple, List
 from pathlib import Path
@@ -34,6 +40,9 @@ Usage:
 """
 
 import argparse
+
+# 导入视频处理工具
+from video_utils import extract_frames_from_video, cleanup_temp_dir, get_video_info, is_video_file
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -199,7 +208,21 @@ def infer_single_image(
     preds = inference(model, data)
     cls_out = preds["cls"].squeeze().cpu().numpy()   # 0/1
     prob = preds["prob"].squeeze().cpu().numpy()     # prob
-    return cls_out, prob
+    
+    # 健壮的numpy数组到标量转换
+    def robust_convert_to_scalar(arr):
+        try:
+            return arr.item()
+        except:
+            try:
+                return arr[0]
+            except:
+                try:
+                    return arr.tolist()
+                except:
+                    return float(arr)
+    
+    return int(robust_convert_to_scalar(cls_out)), float(robust_convert_to_scalar(prob))
 
 
 IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
@@ -222,17 +245,90 @@ def collect_image_paths(path_str: str) -> List[Path]:
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Deepfake image inference (single image version)"
+        description="Deepfake detection for images and videos"
     )
     p.add_argument("--detector_config", default='training/config/detector/effort.yaml',
                    help="YAML 配置文件路径")
     p.add_argument("--weights", required=True,
                    help="Detector 预训练权重")
     p.add_argument("--image", required=True,
-                   help="tested image")
+                   help="tested image or video file")
     p.add_argument("--landmark_model", default=False,
                    help="dlib 81 landmarks dat 文件 / 如果不需要裁剪人脸就是False")
+    p.add_argument("--num_frames", type=int, default=10,
+                   help="从视频中提取的帧数 (默认: 10)")
+    p.add_argument("--output_dir", default=None,
+                   help="视频帧保存目录，如果不指定则使用临时目录")
+    p.add_argument("--keep_frames", action='store_true',
+                   help="保留提取的视频帧文件")
     return p.parse_args()
+
+
+def detect_video_deepfake_simple(video_path, model, face_det, shape_predictor, num_frames=10, output_dir=None):
+    """简化的视频检测函数"""
+    print(f"开始检测视频: {video_path}")
+    
+    # 获取视频信息
+    try:
+        video_info = get_video_info(video_path)
+        print(f"视频信息: {video_info}")
+    except Exception as e:
+        print(f"获取视频信息失败: {e}")
+        return 0.0, []
+    
+    # 提取帧
+    try:
+        frames_dir, frame_indices = extract_frames_from_video(video_path, num_frames, output_dir)
+    except Exception as e:
+        print(f"提取视频帧失败: {e}")
+        return 0.0, []
+    
+    # 收集提取的图片路径
+    try:
+        img_paths = collect_image_paths(frames_dir)
+        print(f"找到 {len(img_paths)} 个提取的帧")
+    except Exception as e:
+        print(f"收集图片路径失败: {e}")
+        if output_dir is None:  # 如果是临时目录则清理
+            cleanup_temp_dir(frames_dir)
+        return 0.0, []
+    
+    # 对每帧进行检测
+    fake_probs = []
+    print("开始逐帧检测...")
+    
+    for idx, img_path in enumerate(img_paths):
+        try:
+            img = cv2.imread(str(img_path))
+            if img is None:
+                print(f"[Warning] loading wrong，skip: {img_path}")
+                continue
+            
+            cls, prob = infer_single_image(img, face_det, shape_predictor, model)
+            fake_probs.append(float(prob))
+            print(f"[{idx+1}/{len(img_paths)}] {img_path.name:>30} | Pred Label: {cls} "
+                  f"(0=Real, 1=Fake) | Fake Prob: {float(prob):.4f}")
+            
+        except Exception as e:
+            print(f"检测帧 {idx+1} 时出错: {e}")
+            continue
+    
+    # 计算平均结果
+    if fake_probs:
+        avg_fake_prob = np.mean(fake_probs)
+        print(f"\n检测完成!")
+        print(f"提取帧数: {len(fake_probs)}")
+        print(f"平均假概率: {avg_fake_prob:.4f}")
+        print(f"检测结果: {'可能是Deepfake' if avg_fake_prob > 0.5 else '可能是真实视频'}")
+    else:
+        avg_fake_prob = 0.0
+        print("未能成功检测任何帧")
+    
+    # 清理临时文件
+    if output_dir is None:  # 如果是自动创建的临时目录，则清理
+        cleanup_temp_dir(frames_dir)
+    
+    return avg_fake_prob, fake_probs
 
 
 def main():
@@ -245,23 +341,41 @@ def main():
     else:
         face_det, shape_predictor = None, None
 
-    img_paths = collect_image_paths(args.image)
-    multiple = len(img_paths) > 1
-    if multiple:
-        print(f"Collected {len(img_paths)} images in total，let's infer them...\n")
-
-    # ---------- infer ----------
-    for idx, img_path in enumerate(img_paths, 1):
-        img = cv2.imread(str(img_path))
-        if img is None:
-            print(f"[Warning] loading wrong，skip: {img_path}", file=sys.stderr)
-            continue
-
-        cls, prob = infer_single_image(img, face_det, shape_predictor, model)
-        print(
-            f"[{idx}/{len(img_paths)}] {img_path.name:>30} | Pred Label: {cls} "
-            f"(0=Real, 1=Fake) | Fake Prob: {prob:.4f}"
+    # 检查输入是否为视频文件
+    if is_video_file(args.image):
+        print("检测到视频文件，开始视频检测...")
+        avg_prob, frame_probs = detect_video_deepfake_simple(
+            args.image, model, face_det, shape_predictor, 
+            args.num_frames, args.output_dir
         )
+        
+        print("\n" + "="*50)
+        print("最终检测结果:")
+        print(f"视频文件: {args.image}")
+        print(f"平均假概率: {avg_prob:.4f}")
+        print(f"检测结论: {'可能是Deepfake视频' if avg_prob > 0.5 else '可能是真实视频'}")
+        
+        if args.keep_frames and args.output_dir:
+            print(f"提取的帧已保存到: {args.output_dir}")
+    else:
+        # 原有的图片检测逻辑
+        img_paths = collect_image_paths(args.image)
+        multiple = len(img_paths) > 1
+        if multiple:
+            print(f"Collected {len(img_paths)} images in total，let's infer them...\n")
+
+        # ---------- infer ----------
+        for idx, img_path in enumerate(img_paths, 1):
+            img = cv2.imread(str(img_path))
+            if img is None:
+                print(f"[Warning] loading wrong，skip: {img_path}", file=sys.stderr)
+                continue
+
+            cls, prob = infer_single_image(img, face_det, shape_predictor, model)
+            print(
+                f"[{idx}/{len(img_paths)}] {img_path.name:>30} | Pred Label: {cls} "
+                f"(0=Real, 1=Fake) | Fake Prob: {float(prob):.4f}"
+            )
 
 
 if __name__ == "__main__":
