@@ -58,8 +58,9 @@ python training/video_demo.py \
     --landmark_model ./preprocessing/shape_predictor_81_face_landmarks.dat \
     --num_frames 15
 ```
-<img width="951" height="681" alt="video1" src="https://github.com/user-attachments/assets/3fdbbdd9-b29f-4f3d-a3b2-3b818a5bd545" />
 <img width="949" height="511" alt="video2" src="https://github.com/user-attachments/assets/5a5bfefa-d957-43f9-abfe-437b30af91b6" />
+<img width="951" height="681" alt="video1" src="https://github.com/user-attachments/assets/3fdbbdd9-b29f-4f3d-a3b2-3b818a5bd545" />
+
 
 
 ##### 参数说明:
