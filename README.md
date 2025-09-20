@@ -38,6 +38,7 @@ clip_model = CLIPModel.from_pretrained("models--openai--clip-vit-large-patch14")
 ```
 
 5. #### run：
+1. images
 ```shell
 $ sh install.sh
 ```
@@ -47,7 +48,31 @@ $ python training/demo.py --detector_config training/config/detector/effort.yaml
 ```
 Note, you are processing a **face image**, please add the ``--landmark_model ./preprocessing/shape_predictor_81_face_landmarks.dat`` to **extract the facial region** for inference, as our model (trained on face deepfakes) used this face extractor for processing faces.
 
+2. video
+```bash
+python training/video_demo.py \
+    --detector_config training/config/detector/effort.yaml \
+    --weights ./training/weights/effort_clip_L14_trainOn_chameleon.pth \
+    --video /path/to/your/video.mp4 \
+    --landmark_model ./preprocessing/shape_predictor_81_face_landmarks.dat \
+    --num_frames 15
+```
 
+##### 参数说明:
+- `--detector_config`: 检测器配置文件路径
+- `--weights`: 预训练权重文件路径
+- `--video` / `--image`: 要检测的视频文件路径
+- `--landmark_model`: dlib人脸关键点模型文件路径（可选，用于人脸对齐）
+- `--num_frames`: 从视频中提取的帧数（默认：10）
+- `--output_dir`: 帧保存目录（可选，不指定则使用临时目录）
+- `--keep_frames`: 保留提取的帧文件（可选）
+
+##### 故障排除
+
+1. **视频无法打开**: 检查视频文件格式是否支持，文件是否损坏
+2. **人脸检测失败**: 尝试不使用`--landmark_model`参数，或检查模型文件路径
+3. **内存不足**: 减少`--num_frames`参数的值
+4. **检测结果异常**: 检查预训练权重文件是否正确加载
 
 ## Reproduction
 

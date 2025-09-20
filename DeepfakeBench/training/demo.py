@@ -30,15 +30,6 @@ from os.path import join
 from typing import Tuple, List
 from pathlib import Path
 
-"""
-Usage:
-    python infer.py \
-        --detector_config ./training/config/detector/effort.yaml \
-        --weights ../../DeepfakeBenchv2/training/weights/easy_clipl14_cdf.pth \
-        --image ./id9_id6_0009.jpg \
-        --landmark_model ../../DeepfakeBenchv2/preprocessing/dlib_tools/shape_predictor_81_face_landmarks.dat
-"""
-
 import argparse
 
 # 导入视频处理工具
