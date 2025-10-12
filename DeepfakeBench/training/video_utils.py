@@ -7,18 +7,20 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import numpy as np
 
 
-def extract_frames_from_video(video_path: str, num_frames: int = 10, output_dir: str = None) -> Tuple[str, List[int]]:
+def extract_frames_from_video(video_path: str, num_frames: int = 10, output_dir: str = None, 
+                            sampling_strategy: str = "uniform") -> Tuple[str, List[int]]:
     """
-    从视频中均匀提取指定数量的帧
+    从视频中提取指定数量的帧
     
     Args:
         video_path: 视频文件路径
         num_frames: 要提取的帧数
         output_dir: 输出目录，如果为None则创建临时目录
+        sampling_strategy: 采样策略 ("uniform" 或 "consecutive")
         
     Returns:
         Tuple[str, List[int]]: (输出目录路径, 提取的帧索引列表)
@@ -48,15 +50,22 @@ def extract_frames_from_video(video_path: str, num_frames: int = 10, output_dir:
     else:
         os.makedirs(output_dir, exist_ok=True)
     
-    # 计算要提取的帧索引（均匀分布）
-    if num_frames >= total_frames:
-        # 如果需要的帧数大于等于总帧数，提取所有帧
-        frame_indices = list(range(total_frames))
+    # 根据策略计算要提取的帧索引
+    if sampling_strategy == "consecutive":
+        # 连续帧采样：从视频中间开始提取连续帧
+        if num_frames >= total_frames:
+            frame_indices = list(range(total_frames))
+        else:
+            start_idx = max(0, (total_frames - num_frames) // 2)
+            frame_indices = list(range(start_idx, start_idx + num_frames))
     else:
-        # 均匀分布提取帧
-        frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int).tolist()
+        # 均匀分布采样（默认）
+        if num_frames >= total_frames:
+            frame_indices = list(range(total_frames))
+        else:
+            frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int).tolist()
     
-    print(f"提取帧索引: {frame_indices}")
+    print(f"采样策略: {sampling_strategy}, 提取帧索引: {frame_indices}")
     
     # 提取帧并保存
     extracted_frames = []
@@ -81,6 +90,54 @@ def extract_frames_from_video(video_path: str, num_frames: int = 10, output_dir:
     
     print(f"成功提取 {len(extracted_frames)} 帧到目录: {output_dir}")
     return output_dir, extracted_frames
+
+
+def extract_audio_from_video(video_path: str, output_audio_path: str = None) -> Optional[str]:
+    """
+    从视频中提取音频
+    
+    Args:
+        video_path: 视频文件路径
+        output_audio_path: 输出音频文件路径，如果为None则创建临时文件
+        
+    Returns:
+        Optional[str]: 音频文件路径，如果提取失败返回None
+    """
+    try:
+        import subprocess
+        
+        if output_audio_path is None:
+            # 创建临时音频文件
+            temp_dir = tempfile.mkdtemp(prefix="video_audio_")
+            output_audio_path = os.path.join(temp_dir, "extracted_audio.wav")
+        
+        # 使用ffmpeg提取音频
+        cmd = [
+            'ffmpeg', '-i', video_path, 
+            '-vn',  # 不处理视频
+            '-acodec', 'pcm_s16le',  # 音频编码
+            '-ar', '16000',  # 采样率
+            '-ac', '1',  # 单声道
+            '-y',  # 覆盖输出文件
+            output_audio_path
+        ]
+        
+        # 执行命令
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0 and os.path.exists(output_audio_path):
+            print(f"音频提取成功: {output_audio_path}")
+            return output_audio_path
+        else:
+            print(f"音频提取失败: {result.stderr}")
+            return None
+            
+    except FileNotFoundError:
+        print("警告: ffmpeg未找到，无法提取音频")
+        return None
+    except Exception as e:
+        print(f"音频提取出错: {e}")
+        return None
 
 
 def cleanup_temp_dir(temp_dir: str):

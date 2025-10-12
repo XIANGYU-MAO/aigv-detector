@@ -1,0 +1,98 @@
+# 增强视频Deepfake检测配置文件
+
+# 基础检测器配置
+base_detector:
+  config_path: "training/config/detector/effort.yaml"
+  weights_path: "training/weights/effort_clip_L14_trainOn_chameleon.pth"
+
+# 视频处理配置
+video_processing:
+  # 帧采样策略
+  sampling_strategy: "consecutive"  # "consecutive" 或 "uniform"
+  # 默认提取帧数
+  default_num_frames: 15
+  # 自动提取音频
+  auto_extract_audio: true
+
+# 帧间分析配置
+inter_frame:
+  # 光流分析参数
+  optical_flow:
+    method: "farneback"  # "lucas_kanade" 或 "farneback"
+    flow_threshold: 0.1  # 光流强度阈值
+    anomaly_threshold: 0.3  # 异常检测阈值
+  
+  # SSIM分析参数
+  ssim:
+    window_size: 11  # SSIM计算窗口大小
+    anomaly_threshold: 0.05  # SSIM异常阈值
+
+# 视听一致性分析配置
+audio_visual:
+  # 唇部检测参数
+  lip_detection:
+    model_path: "preprocessing/shape_predictor_81_face_landmarks.dat"  # dlib关键点模型路径
+    sync_threshold: 0.95  # 过于完美的同步阈值
+  
+  # 音频处理参数
+  audio:
+    sample_rate: 16000  # 音频采样率
+    mfcc_features: 13  # MFCC特征数量
+
+# 决策引擎配置
+decision_engine:
+  # 决策阈值
+  ai_prob_threshold: 0.6  # AI概率阈值
+  flow_anomaly_threshold: 0.3  # 光流异常阈值
+  sync_perfect_threshold: 0.95  # 同步完美阈值
+  confidence_threshold: 0.8  # 置信度阈值
+  
+  # 特征权重
+  weights:
+    ai_probability: 0.4  # AI概率权重
+    inter_frame_anomaly: 0.3  # 帧间异常权重
+    audio_visual_anomaly: 0.3  # 视听异常权重
+
+# 特征融合配置
+feature_fusion:
+  # 特征权重
+  feature_weights:
+    visual_features: 0.4  # 视觉特征权重
+    inter_frame_features: 0.3  # 帧间特征权重
+    audio_visual_features: 0.3  # 视听特征权重
+  
+  # 特征归一化
+  normalize_features: true  # 是否归一化特征
+
+# 日志配置
+logging:
+  level: "INFO"  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# 性能配置
+performance:
+  # 并行处理
+  parallel_processing: true  # 是否启用并行处理
+  max_workers: 4  # 最大工作线程数
+  
+  # 内存优化
+  memory_optimization: true  # 是否启用内存优化
+  batch_size: 8  # 批处理大小
+  
+  # GPU加速
+  use_gpu: true  # 是否使用GPU加速
+  gpu_memory_fraction: 0.8  # GPU内存使用比例
+
+# 输出配置
+output:
+  # 结果保存
+  save_results: true  # 是否保存检测结果
+  results_dir: "results"  # 结果保存目录
+  
+  # 可视化
+  generate_visualization: false  # 是否生成可视化结果
+  visualization_dir: "visualizations"  # 可视化结果目录
+  
+  # 详细报告
+  detailed_report: true  # 是否生成详细报告
+  report_format: "json"  # 报告格式: json, yaml, txt
