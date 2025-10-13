@@ -211,7 +211,7 @@ class FeatureFusion:
         }
     
     def fuse_features(self, visual_features: Dict, inter_frame_features: Dict, 
-                     audio_visual_features: Dict) -> Dict:
+                     audio_visual_features: Dict, hallo_enhanced_features: Dict = None) -> Dict:
         """
         融合多模态特征
         
@@ -219,6 +219,7 @@ class FeatureFusion:
             visual_features: 视觉特征
             inter_frame_features: 帧间特征
             audio_visual_features: 视听特征
+            hallo_enhanced_features: Hallo增强特征
             
         Returns:
             Dict: 融合后的特征字典
@@ -247,11 +248,32 @@ class FeatureFusion:
             'has_audio': audio_visual_features.get('has_audio', False)
         }
         
+        # 添加Hallo增强特征
+        if hallo_enhanced_features:
+            fused_features.update({
+                'hallo_enhanced_score': hallo_enhanced_features.get('hallo_enhanced_score', 0.0),
+                'is_hallo_enhanced': hallo_enhanced_features.get('is_hallo_enhanced', False),
+                'diffusion_score': hallo_enhanced_features.get('diffusion_score', 0.0),
+                'enhanced_freq_score': hallo_enhanced_features.get('enhanced_freq_score', 0.0),
+                'enhanced_attention_score': hallo_enhanced_features.get('enhanced_attention_score', 0.0),
+                'enhanced_temporal_score': hallo_enhanced_features.get('enhanced_temporal_score', 0.0)
+            })
+        else:
+            fused_features.update({
+                'hallo_enhanced_score': 0.0,
+                'is_hallo_enhanced': False,
+                'diffusion_score': 0.0,
+                'enhanced_freq_score': 0.0,
+                'enhanced_attention_score': 0.0,
+                'enhanced_temporal_score': 0.0
+            })
+        
         # 计算加权综合分数
         weighted_score = (
             fused_features['ai_probability'] * self.feature_weights['visual_features'] +
             fused_features['inter_frame_anomaly'] * self.feature_weights['inter_frame_features'] +
-            (1.0 if fused_features['audio_visual_is_anomalous'] else 0.0) * self.feature_weights['audio_visual_features']
+            (1.0 if fused_features['audio_visual_is_anomalous'] else 0.0) * self.feature_weights['audio_visual_features'] +
+            fused_features['hallo_enhanced_score'] * 0.3  # Hallo增强特征权重
         )
         
         fused_features['weighted_score'] = weighted_score

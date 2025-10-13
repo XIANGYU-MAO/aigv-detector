@@ -170,12 +170,13 @@ class DecisionEngine:
         
         return rule_results
     
-    def make_final_decision(self, features: Dict) -> Dict:
+    def make_final_decision(self, features: Dict, is_hallo_generated: bool = False) -> Dict:
         """
         做出最终决策
         
         Args:
             features: 包含所有特征的字典
+            is_hallo_generated: 是否为Hallo生成的视频
             
         Returns:
             Dict: 包含最终决策结果的字典
@@ -189,6 +190,38 @@ class DecisionEngine:
         ai_probability = features.get('ai_probability', 0.0)
         inter_frame_anomaly = features.get('inter_frame_analysis', {}).get('combined_anomaly_score', 0.0)
         audio_visual_anomaly = 1.0 if features.get('audio_visual_analysis', {}).get('is_anomalous', False) else 0.0
+        
+        # 如果是Hallo生成，使用增强特征
+        if is_hallo_generated:
+            hallo_enhanced_score = features.get('hallo_enhanced_score', 0.0)
+            diffusion_score = features.get('diffusion_score', 0.0)
+            enhanced_freq_score = features.get('enhanced_freq_score', 0.0)
+            enhanced_attention_score = features.get('enhanced_attention_score', 0.0)
+            enhanced_temporal_score = features.get('enhanced_temporal_score', 0.0)
+            
+            # 针对Hallo的增强决策逻辑
+            if hallo_enhanced_score > 0.6 or diffusion_score > 0.7:
+                return {
+                    'decision': 'ai_generated',
+                    'confidence': min(1.0, hallo_enhanced_score * 1.2),
+                    'reasoning': [
+                        f'Hallo增强检测分数: {hallo_enhanced_score:.3f}',
+                        f'扩散模型检测分数: {diffusion_score:.3f}',
+                        f'增强频域分数: {enhanced_freq_score:.3f}',
+                        f'增强注意力分数: {enhanced_attention_score:.3f}',
+                        f'增强时间一致性分数: {enhanced_temporal_score:.3f}'
+                    ]
+                }
+            elif hallo_enhanced_score < 0.3 and diffusion_score < 0.4:
+                return {
+                    'decision': 'real_video',
+                    'confidence': min(1.0, (1.0 - hallo_enhanced_score) * 1.2),
+                    'reasoning': [
+                        f'Hallo增强检测分数较低: {hallo_enhanced_score:.3f}',
+                        f'扩散模型检测分数较低: {diffusion_score:.3f}',
+                        '可能为真实视频'
+                    ]
+                }
         
         # 加权综合分数
         weighted_score = (

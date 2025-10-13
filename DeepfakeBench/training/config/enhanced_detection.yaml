@@ -39,6 +39,24 @@ audio_visual:
     sample_rate: 16000  # 音频采样率
     mfcc_features: 13  # MFCC特征数量
 
+# Hallo增强分析配置（当用户明确知道视频是Hallo生成时使用）
+hallo_enhanced:
+  # 扩散模型检测参数
+  diffusion_detection:
+    sensitivity: 0.9  # 扩散模型检测敏感度
+  
+  # 频域增强分析参数
+  frequency_analysis:
+    sensitivity: 0.8  # 频域分析敏感度
+  
+  # 交叉注意力增强检测参数
+  cross_attention_detection:
+    sensitivity: 0.7  # 注意力检测敏感度
+  
+  # 时间一致性增强参数
+  temporal_consistency:
+    sensitivity: 0.6  # 时间一致性检测敏感度
+
 # 决策引擎配置
 decision_engine:
   # 决策阈值

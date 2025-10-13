@@ -22,6 +22,7 @@ from enhanced_detection.inter_frame_analyzer import InterFrameAnalyzer
 from enhanced_detection.audio_visual_analyzer import AudioVisualAnalyzer
 from enhanced_detection.decision_engine import DecisionEngine
 from enhanced_detection.feature_fusion import FeatureFusion
+from enhanced_detection.hallo_enhanced_analyzer import HalloEnhancedAnalyzer
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -123,6 +124,9 @@ class EnhancedVideoDetector:
             # 初始化特征融合器
             self.feature_fusion = FeatureFusion(self.config['feature_fusion'])
             
+            # 初始化Hallo增强分析器
+            self.hallo_enhanced = HalloEnhancedAnalyzer(self.config)
+            
             logger.info("所有组件初始化完成")
             
         except Exception as e:
@@ -131,7 +135,7 @@ class EnhancedVideoDetector:
     
     def detect_video(self, video_path: str, num_frames: int = 15, 
                     audio_path: Optional[str] = None, temp_dir: Optional[str] = None,
-                    sampling_strategy: str = "consecutive") -> Dict:
+                    sampling_strategy: str = "consecutive", is_hallo_generated: bool = False) -> Dict:
         """
         检测视频是否为Deepfake
         
@@ -141,6 +145,7 @@ class EnhancedVideoDetector:
             audio_path: 音频文件路径（可选，如果不提供则从视频中自动提取）
             temp_dir: 临时目录（可选）
             sampling_strategy: 帧采样策略 ("consecutive" 或 "uniform")
+            is_hallo_generated: 是否为Hallo生成的视频（使用增强检测模式）
             
         Returns:
             Dict: 包含检测结果的字典
@@ -164,15 +169,20 @@ class EnhancedVideoDetector:
             # 5. 视听一致性分析
             audio_visual_results = self._perform_audio_visual_analysis(frames, audio_path)
             
-            # 6. 特征融合
-            fused_features = self._fuse_all_features(visual_results, inter_frame_results, audio_visual_results)
+            # 6. Hallo增强分析（如果指定为Hallo生成）
+            hallo_enhanced_results = {}
+            if is_hallo_generated:
+                hallo_enhanced_results = self._perform_hallo_enhanced_analysis(frames)
             
-            # 7. 决策
-            final_decision = self._make_final_decision(fused_features)
+            # 7. 特征融合
+            fused_features = self._fuse_all_features(visual_results, inter_frame_results, audio_visual_results, hallo_enhanced_results)
             
-            # 8. 构建结果
+            # 8. 决策
+            final_decision = self._make_final_decision(fused_features, is_hallo_generated)
+            
+            # 9. 构建结果
             result = self._build_result(video_path, visual_results, inter_frame_results, 
-                                      audio_visual_results, final_decision, frame_indices)
+                                      audio_visual_results, hallo_enhanced_results, final_decision, frame_indices)
             
             logger.info(f"视频检测完成: {video_path}")
             return result
@@ -280,8 +290,19 @@ class EnhancedVideoDetector:
             logger.error(f"视听一致性分析失败: {e}")
             return {}
     
+    def _perform_hallo_enhanced_analysis(self, frames: List[np.ndarray]) -> Dict:
+        """执行Hallo增强分析"""
+        logger.info("执行Hallo增强分析")
+        
+        try:
+            results = self.hallo_enhanced.analyze_hallo_enhanced_features(frames)
+            return results
+        except Exception as e:
+            logger.error(f"Hallo增强分析失败: {e}")
+            return {}
+    
     def _fuse_all_features(self, visual_results: Dict, inter_frame_results: Dict, 
-                          audio_visual_results: Dict) -> Dict:
+                          audio_visual_results: Dict, hallo_enhanced_results: Dict = None) -> Dict:
         """融合所有特征"""
         logger.info("融合多模态特征")
         
@@ -294,14 +315,31 @@ class EnhancedVideoDetector:
         # 提取视听特征
         audio_visual_features = self.feature_fusion.extract_audio_visual_features(audio_visual_results)
         
+        # 提取Hallo增强特征
+        hallo_enhanced_features = self._extract_hallo_enhanced_features(hallo_enhanced_results)
+        
         # 融合特征
         fused_features = self.feature_fusion.fuse_features(
-            visual_features, inter_frame_features, audio_visual_features
+            visual_features, inter_frame_features, audio_visual_features, hallo_enhanced_features
         )
         
         return fused_features
     
-    def _make_final_decision(self, fused_features: Dict) -> Dict:
+    def _extract_hallo_enhanced_features(self, hallo_enhanced_results: Dict) -> Dict:
+        """提取Hallo增强特征"""
+        if not hallo_enhanced_results:
+            return {'hallo_enhanced_score': 0.0, 'is_hallo_enhanced': False}
+        
+        return {
+            'hallo_enhanced_score': hallo_enhanced_results.get('overall_hallo_score', 0.0),
+            'is_hallo_enhanced': hallo_enhanced_results.get('is_hallo_enhanced', False),
+            'diffusion_score': hallo_enhanced_results.get('diffusion_analysis', {}).get('diffusion_score', 0.0),
+            'enhanced_freq_score': hallo_enhanced_results.get('frequency_analysis', {}).get('enhanced_freq_score', 0.0),
+            'enhanced_attention_score': hallo_enhanced_results.get('attention_analysis', {}).get('enhanced_attention_score', 0.0),
+            'enhanced_temporal_score': hallo_enhanced_results.get('temporal_analysis', {}).get('enhanced_temporal_score', 0.0)
+        }
+    
+    def _make_final_decision(self, fused_features: Dict, is_hallo_generated: bool = False) -> Dict:
         """做出最终决策"""
         logger.info("应用决策引擎")
         
@@ -317,7 +355,7 @@ class EnhancedVideoDetector:
             }
     
     def _build_result(self, video_path: str, visual_results: Dict, inter_frame_results: Dict,
-                     audio_visual_results: Dict, final_decision: Dict, frame_indices: List[int]) -> Dict:
+                     audio_visual_results: Dict, hallo_enhanced_results: Dict, final_decision: Dict, frame_indices: List[int]) -> Dict:
         """构建最终结果"""
         
         result = {
@@ -347,6 +385,16 @@ class EnhancedVideoDetector:
                 'is_too_perfect': audio_visual_results.get('sync_analysis', {}).get('is_too_perfect', False),
                 'has_audio': audio_visual_results.get('has_audio', False),
                 'is_anomalous': audio_visual_results.get('is_anomalous', False)
+            },
+            
+            # Hallo增强分析结果
+            'hallo_enhanced_analysis': {
+                'overall_hallo_score': hallo_enhanced_results.get('overall_hallo_score', 0.0),
+                'is_hallo_enhanced': hallo_enhanced_results.get('is_hallo_enhanced', False),
+                'diffusion_score': hallo_enhanced_results.get('diffusion_analysis', {}).get('diffusion_score', 0.0),
+                'enhanced_freq_score': hallo_enhanced_results.get('frequency_analysis', {}).get('enhanced_freq_score', 0.0),
+                'enhanced_attention_score': hallo_enhanced_results.get('attention_analysis', {}).get('enhanced_attention_score', 0.0),
+                'enhanced_temporal_score': hallo_enhanced_results.get('temporal_analysis', {}).get('enhanced_temporal_score', 0.0)
             },
             
             # 最终决策
@@ -427,6 +475,7 @@ def parse_args():
     parser.add_argument("--num_frames", type=int, default=15, help="提取的帧数（默认：15）")
     parser.add_argument("--sampling_strategy", choices=["consecutive", "uniform"], default="consecutive", 
                        help="帧采样策略：consecutive（连续帧，适合光流分析）或uniform（均匀分布，默认：consecutive）")
+    parser.add_argument("--is_hallo", action='store_true', help="指定视频为Hallo生成，使用增强检测模式")
     parser.add_argument("--output_dir", default=None, help="帧保存目录（可选）")
     parser.add_argument("--keep_frames", action='store_true', help="保留提取的帧文件")
     
@@ -461,7 +510,8 @@ def main():
             num_frames=args.num_frames,
             audio_path=args.audio,
             temp_dir=args.output_dir,
-            sampling_strategy=args.sampling_strategy
+            sampling_strategy=args.sampling_strategy,
+            is_hallo_generated=args.is_hallo
         )
         
         # 打印报告
