@@ -1,3 +1,6 @@
+> This is the readme for Milestone1's code
+> Please refer to './training/enhanced_detection/README.md' for enhanced code (Milestone 2/3)
+
 ## Base Paper:
 [click to download](https://github.com/user-attachments/files/22422273/2411.15633v4.pdf)
  

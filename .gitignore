@@ -1,2 +1,7 @@
 /DeepfakeBench/training/weights/*
 PRESENTATION.md
+specific.md
+video_detection_notebook_copy_from_colab.ipynb
+sample_dataset.png
+evaluation_results/visualize_results.py
+MILESTONE*.md
