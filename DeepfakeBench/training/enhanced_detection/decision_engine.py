@@ -170,9 +170,85 @@ class DecisionEngine:
         
         return rule_results
     
+    def _calculate_probability_scores(self, features: Dict, rule_results: Dict) -> Dict:
+        """
+        计算概率推导分数
+        
+        Args:
+            features: 特征字典
+            rule_results: 规则结果字典
+            
+        Returns:
+            Dict: 包含概率分数的字典
+        """
+        # 提取基础特征
+        ai_probability = features.get('ai_probability', 0.0)
+        inter_frame_anomaly = features.get('inter_frame_analysis', {}).get('combined_anomaly_score', 0.0)
+        audio_visual_anomaly = 1.0 if features.get('audio_visual_analysis', {}).get('is_anomalous', False) else 0.0
+        
+        # 计算AI生成的概率分数
+        ai_likelihood = 0.0
+        
+        # 1. 基于AI概率的贡献
+        ai_likelihood += ai_probability * 0.4
+        
+        # 2. 基于帧间异常的贡献
+        ai_likelihood += inter_frame_anomaly * 0.3
+        
+        # 3. 基于视听异常的贡献
+        ai_likelihood += audio_visual_anomaly * 0.2
+        
+        # 4. 基于规则结果的贡献
+        if rule_results['ai_generated_strong']['satisfied']:
+            ai_likelihood += 0.3
+        elif rule_results['ai_generated_weak']['satisfied']:
+            ai_likelihood += 0.2
+        
+        # 5. 基于规则满足度的贡献
+        ai_strong_ratio = rule_results['ai_generated_strong']['satisfied_count'] / rule_results['ai_generated_strong']['total_rules']
+        ai_weak_ratio = rule_results['ai_generated_weak']['satisfied_count'] / rule_results['ai_generated_weak']['total_rules']
+        
+        ai_likelihood += ai_strong_ratio * 0.15
+        ai_likelihood += ai_weak_ratio * 0.1
+        
+        # 6. 基于特征组合的贡献
+        if ai_probability > 0.7 and inter_frame_anomaly > 0.5:
+            ai_likelihood += 0.1
+        if ai_probability > 0.8:
+            ai_likelihood += 0.1
+        if inter_frame_anomaly > 0.7:
+            ai_likelihood += 0.1
+        
+        # 确保概率在[0,1]范围内
+        ai_likelihood = min(1.0, max(0.0, ai_likelihood))
+        
+        # 计算真实视频的概率分数
+        real_likelihood = 1.0 - ai_likelihood
+        
+        # 基于真实视频规则的调整
+        if rule_results['real_video']['satisfied']:
+            real_likelihood = min(1.0, real_likelihood + 0.2)
+        
+        # 基于低AI概率的调整
+        if ai_probability < 0.3:
+            real_likelihood = min(1.0, real_likelihood + 0.1)
+        
+        # 基于低帧间异常的调整
+        if inter_frame_anomaly < 0.2:
+            real_likelihood = min(1.0, real_likelihood + 0.1)
+        
+        # 确保概率在[0,1]范围内
+        real_likelihood = min(1.0, max(0.0, real_likelihood))
+        
+        return {
+            'ai_likelihood': ai_likelihood,
+            'real_likelihood': real_likelihood,
+            'confidence_difference': abs(ai_likelihood - real_likelihood)
+        }
+    
     def make_final_decision(self, features: Dict, is_hallo_generated: bool = False) -> Dict:
         """
-        做出最终决策
+        做出最终决策 - 优化版本，增加概率推导，减少uncertain结果
         
         Args:
             features: 包含所有特征的字典
@@ -223,50 +299,94 @@ class DecisionEngine:
                     ]
                 }
         
-        # 加权综合分数
+        # 计算概率推导分数
+        probability_scores = self._calculate_probability_scores(features, rule_results)
+        
+        # 加权综合分数（包含概率推导）
         weighted_score = (
             ai_probability * self.weights['ai_probability'] +
             inter_frame_anomaly * self.weights['inter_frame_anomaly'] +
-            audio_visual_anomaly * self.weights['audio_visual_anomaly']
+            audio_visual_anomaly * self.weights['audio_visual_anomaly'] +
+            probability_scores['ai_likelihood'] * 0.2  # 添加概率推导权重
         )
         
-        # 决策逻辑
+        # 优化的决策逻辑 - 减少uncertain结果
         decision = "uncertain"
         confidence = 0.0
         reasoning = []
         
-        # 检查AI生成视频的强规则
+        # 1. 检查AI生成视频的强规则
         if rule_results['ai_generated_strong']['satisfied']:
             decision = "ai_generated"
-            confidence = rule_results['ai_generated_strong']['confidence']
+            confidence = min(1.0, rule_results['ai_generated_strong']['confidence'] * 1.1)
             reasoning.append("满足AI生成视频的强规则条件")
         
-        # 检查AI生成视频的弱规则
+        # 2. 检查AI生成视频的弱规则
         elif rule_results['ai_generated_weak']['satisfied']:
             decision = "ai_generated"
-            confidence = rule_results['ai_generated_weak']['confidence']
+            confidence = min(1.0, rule_results['ai_generated_weak']['confidence'] * 1.05)
             reasoning.append("满足AI生成视频的弱规则条件")
         
-        # 检查真实视频的规则
+        # 3. 检查真实视频的规则
         elif rule_results['real_video']['satisfied']:
             decision = "real_video"
-            confidence = rule_results['real_video']['confidence']
+            confidence = min(1.0, rule_results['real_video']['confidence'] * 1.1)
             reasoning.append("满足真实视频的规则条件")
         
-        # 基于综合分数进行决策
+        # 4. 基于概率推导的决策
+        elif probability_scores['ai_likelihood'] > 0.7:
+            decision = "ai_generated"
+            confidence = min(1.0, probability_scores['ai_likelihood'] * 0.9)
+            reasoning.append(f"概率推导显示AI生成可能性高: {probability_scores['ai_likelihood']:.3f}")
+        
+        elif probability_scores['real_likelihood'] > 0.7:
+            decision = "real_video"
+            confidence = min(1.0, probability_scores['real_likelihood'] * 0.9)
+            reasoning.append(f"概率推导显示真实视频可能性高: {probability_scores['real_likelihood']:.3f}")
+        
+        # 5. 基于综合分数的决策（降低阈值）
+        elif weighted_score > 0.6:  # 降低阈值从0.8到0.6
+            decision = "ai_generated"
+            confidence = min(1.0, weighted_score * 0.85)
+            reasoning.append(f"综合分数 {weighted_score:.3f} 超过阈值 0.6")
+        
+        elif weighted_score < 0.4:  # 提高阈值从0.2到0.4
+            decision = "real_video"
+            confidence = min(1.0, (1.0 - weighted_score) * 0.85)
+            reasoning.append(f"综合分数 {weighted_score:.3f} 低于阈值 0.4")
+        
+        # 6. 基于单个强特征的决策
+        elif ai_probability > 0.85:
+            decision = "ai_generated"
+            confidence = min(1.0, ai_probability * 0.8)
+            reasoning.append(f"AI概率极高: {ai_probability:.3f}")
+        
+        elif ai_probability < 0.15:
+            decision = "real_video"
+            confidence = min(1.0, (1.0 - ai_probability) * 0.8)
+            reasoning.append(f"AI概率极低: {ai_probability:.3f}")
+        
+        elif inter_frame_anomaly > 0.7:
+            decision = "ai_generated"
+            confidence = min(1.0, inter_frame_anomaly * 0.75)
+            reasoning.append(f"帧间异常分数极高: {inter_frame_anomaly:.3f}")
+        
+        elif inter_frame_anomaly < 0.1 and ai_probability < 0.3:
+            decision = "real_video"
+            confidence = min(1.0, (1.0 - inter_frame_anomaly) * 0.75)
+            reasoning.append(f"帧间异常分数极低且AI概率较低: {inter_frame_anomaly:.3f}, {ai_probability:.3f}")
+        
+        # 7. 最后的概率推导决策
         else:
-            if weighted_score > self.confidence_threshold:
+            # 使用概率推导进行最终决策
+            if probability_scores['ai_likelihood'] > probability_scores['real_likelihood']:
                 decision = "ai_generated"
-                confidence = weighted_score
-                reasoning.append(f"综合分数 {weighted_score:.3f} 超过阈值 {self.confidence_threshold}")
-            elif weighted_score < (1.0 - self.confidence_threshold):
-                decision = "real_video"
-                confidence = 1.0 - weighted_score
-                reasoning.append(f"综合分数 {weighted_score:.3f} 低于阈值 {1.0 - self.confidence_threshold}")
+                confidence = min(1.0, probability_scores['ai_likelihood'] * 0.7)
+                reasoning.append(f"概率推导倾向于AI生成: {probability_scores['ai_likelihood']:.3f} vs {probability_scores['real_likelihood']:.3f}")
             else:
-                decision = "uncertain"
-                confidence = 0.5
-                reasoning.append("特征不足以做出明确判断")
+                decision = "real_video"
+                confidence = min(1.0, probability_scores['real_likelihood'] * 0.7)
+                reasoning.append(f"概率推导倾向于真实视频: {probability_scores['real_likelihood']:.3f} vs {probability_scores['ai_likelihood']:.3f}")
         
         # 构建最终结果
         result = {
@@ -275,6 +395,7 @@ class DecisionEngine:
             'weighted_score': weighted_score,
             'reasoning': reasoning,
             'rule_results': rule_results,
+            'probability_scores': probability_scores,
             'feature_scores': {
                 'ai_probability': ai_probability,
                 'inter_frame_anomaly': inter_frame_anomaly,
@@ -288,7 +409,7 @@ class DecisionEngine:
     
     def get_decision_explanation(self, result: Dict) -> str:
         """
-        获取决策解释
+        获取决策解释 - 优化版本，包含概率推导信息
         
         Args:
             result: 决策结果字典
@@ -300,6 +421,7 @@ class DecisionEngine:
         confidence = result['confidence']
         reasoning = result['reasoning']
         feature_scores = result['feature_scores']
+        probability_scores = result.get('probability_scores', {})
         
         explanation = f"检测结果: {decision}\n"
         explanation += f"置信度: {confidence:.3f}\n\n"
@@ -312,5 +434,11 @@ class DecisionEngine:
         explanation += f"- AI概率: {feature_scores['ai_probability']:.3f}\n"
         explanation += f"- 帧间异常: {feature_scores['inter_frame_anomaly']:.3f}\n"
         explanation += f"- 视听异常: {feature_scores['audio_visual_anomaly']:.3f}\n"
+        
+        if probability_scores:
+            explanation += f"\n概率推导:\n"
+            explanation += f"- AI生成可能性: {probability_scores.get('ai_likelihood', 0.0):.3f}\n"
+            explanation += f"- 真实视频可能性: {probability_scores.get('real_likelihood', 0.0):.3f}\n"
+            explanation += f"- 置信度差异: {probability_scores.get('confidence_difference', 0.0):.3f}\n"
         
         return explanation

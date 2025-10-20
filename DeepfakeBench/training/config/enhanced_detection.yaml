@@ -57,19 +57,27 @@ hallo_enhanced:
   temporal_consistency:
     sensitivity: 0.6  # 时间一致性检测敏感度
 
-# 决策引擎配置
+# 决策引擎配置 - 优化版本，增加概率推导
 decision_engine:
-  # 决策阈值
+  # 决策阈值（优化后降低uncertain结果）
   ai_prob_threshold: 0.6  # AI概率阈值
   flow_anomaly_threshold: 0.3  # 光流异常阈值
   sync_perfect_threshold: 0.95  # 同步完美阈值
-  confidence_threshold: 0.8  # 置信度阈值
+  confidence_threshold: 0.6  # 置信度阈值（从0.8降低到0.6）
   
-  # 特征权重
+  # 概率推导阈值
+  probability_thresholds:
+    ai_likelihood_high: 0.7  # AI生成可能性高阈值
+    real_likelihood_high: 0.7  # 真实视频可能性高阈值
+    single_feature_strong: 0.85  # 单个强特征阈值
+    single_feature_weak: 0.15  # 单个弱特征阈值
+  
+  # 特征权重（包含概率推导）
   weights:
     ai_probability: 0.4  # AI概率权重
     inter_frame_anomaly: 0.3  # 帧间异常权重
     audio_visual_anomaly: 0.3  # 视听异常权重
+    probability_derivation: 0.2  # 概率推导权重
 
 # 特征融合配置
 feature_fusion:
